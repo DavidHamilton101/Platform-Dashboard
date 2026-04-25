@@ -1,0 +1,37 @@
+name: Secret Scanning
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  trufflehog:
+    name: TruffleHog Secret Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog
+        id: trufflehog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.before }}
+          head: ${{ github.sha }}
+          extra_args: --only-verified
+
+      - name: Alert on secret detected in protected branch
+        if: failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        run: |
+          curl -s -X POST "${{ secrets.ALERT_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "text": "SECURITY ALERT: TruffleHog detected a verified secret on branch ${{ github.ref }} in commit ${{ github.sha }}. Immediate review required.",
+              "repository": "${{ github.repository }}",
+              "actor": "${{ github.actor }}"
+            }'

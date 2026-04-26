@@ -29,3 +29,27 @@ Phase 4: Model optimisation recommendations
 - Add README.md to every new directory
 - Commit logical units with clear conventional commit messages
 - Always confirm current branch before writing code
+
+## Additional Context
+
+### Alerting Strategy
+Initial alert destination: Microsoft Teams webhook
+(already available via Microsoft 365 MCP connection —
+no additional infrastructure required)
+
+The alerting module must be designed to accept any
+webhook URL via environment variable so the destination
+can be changed without code changes.
+
+When multi-destination routing is required — for example:
+- Cost and budget alerts → Stuart Rae (Finance Director)
+- Security and architecture alerts → Duncan MacLean (CEO/TDA)
+- Anomaly and operational alerts → David Hamilton (IT Director)
+
+Introduce n8n as the routing layer at that point. Do not
+build an n8n dependency into the alerting module until
+multi-destination routing is confirmed as a requirement.
+
+Update the ALERT_WEBHOOK_URL GitHub Actions secret to
+the Microsoft Teams webhook URL before any code reaches
+main. The current value is a placeholder.

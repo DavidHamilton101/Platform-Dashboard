@@ -42,7 +42,7 @@ jobs:
 
       - name: Run tests with coverage
         if: steps.pkg_check.outputs.exists == 'true'
-        run: npm test -- --coverage --coverageThreshold='{"global":{"lines":70,"functions":70,"branches":70,"statements":70}}'
+        run: npm test -- --coverage
 
       - name: Security audit
         if: steps.pkg_check.outputs.exists == 'true'

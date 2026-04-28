@@ -8,6 +8,12 @@ const envSchema = z.object({
   ALERT_WEBHOOK_URL: z.string().url(),
   COST_ALERT_THRESHOLD_USD: z.coerce.number().positive(),
   ENVIRONMENT: z.enum(['development', 'staging', 'production']),
+  // Forecasting parameters — all optional with safe defaults
+  FORECAST_HISTORY_DAYS: z.coerce.number().int().positive().default(30),
+  FORECAST_HORIZON_DAYS: z.coerce.number().int().positive().default(90),
+  GROWTH_SCENARIO_LOW: z.coerce.number().positive().default(0.05),
+  GROWTH_SCENARIO_MEDIUM: z.coerce.number().positive().default(0.15),
+  GROWTH_SCENARIO_HIGH: z.coerce.number().positive().default(0.30),
 });
 
 export type Env = z.infer<typeof envSchema>;

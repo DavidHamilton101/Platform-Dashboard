@@ -36,6 +36,11 @@ export interface CostByWorkspaceRow {
   total_amount_usd: number;
 }
 
+export interface DailyCostSeriesRow {
+  day: string; // 'YYYY-MM-DD'
+  total_amount_usd: number;
+}
+
 export class SupabaseReader {
   constructor(private readonly client: SupabaseClient) {}
 
@@ -104,6 +109,30 @@ export class SupabaseReader {
     }
 
     return data as LastIngestionRow | null;
+  }
+
+  async getDailyCostSeries(days: number): Promise<DailyCostSeriesRow[]> {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1_000).toISOString();
+
+    const { data, error } = await this.client
+      .from('ai_cost_daily')
+      .select('recorded_at, amount_usd')
+      .gte('recorded_at', since);
+
+    if (error) {
+      logger.error({ message: error.message, code: error.code }, 'Failed to query daily cost series');
+      throw new StorageError(`Failed to query daily cost series: ${error.message}`, { cause: error });
+    }
+
+    const byDay = new Map<string, number>();
+    for (const row of data ?? []) {
+      const day = (row.recorded_at as string).slice(0, 10);
+      byDay.set(day, (byDay.get(day) ?? 0) + Number(row.amount_usd));
+    }
+
+    return Array.from(byDay.entries())
+      .map(([day, total_amount_usd]) => ({ day, total_amount_usd }))
+      .sort((a, b) => a.day.localeCompare(b.day));
   }
 
   async getCostByWorkspace(days: number): Promise<CostByWorkspaceRow[]> {

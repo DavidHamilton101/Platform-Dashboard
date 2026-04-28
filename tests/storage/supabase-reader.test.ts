@@ -187,3 +187,51 @@ describe('SupabaseReader.getCostByWorkspace', () => {
     await expect(reader.getCostByWorkspace(30)).rejects.toBeInstanceOf(StorageError);
   });
 });
+
+// ─── getDailyCostSeries ───────────────────────────────────────────────────────
+
+describe('SupabaseReader.getDailyCostSeries', () => {
+  it('returns an empty array when there are no rows', async () => {
+    const client = makeSelectClient({ data: [], error: null });
+    const reader = new SupabaseReader(client);
+
+    await expect(reader.getDailyCostSeries(7)).resolves.toEqual([]);
+  });
+
+  it('groups rows by day and sums amount_usd', async () => {
+    const rows = [
+      { recorded_at: '2026-04-21T00:00:00Z', amount_usd: 10.0 },
+      { recorded_at: '2026-04-21T12:00:00Z', amount_usd: 5.0 },
+      { recorded_at: '2026-04-22T00:00:00Z', amount_usd: 8.0 },
+    ];
+    const client = makeSelectClient({ data: rows, error: null });
+    const reader = new SupabaseReader(client);
+
+    const result = await reader.getDailyCostSeries(7);
+
+    expect(result).toHaveLength(2);
+    expect(result.find(r => r.day === '2026-04-21')?.total_amount_usd).toBeCloseTo(15.0);
+    expect(result.find(r => r.day === '2026-04-22')?.total_amount_usd).toBeCloseTo(8.0);
+  });
+
+  it('returns results sorted ascending by day', async () => {
+    const rows = [
+      { recorded_at: '2026-04-23T00:00:00Z', amount_usd: 5.0 },
+      { recorded_at: '2026-04-21T00:00:00Z', amount_usd: 10.0 },
+      { recorded_at: '2026-04-22T00:00:00Z', amount_usd: 8.0 },
+    ];
+    const client = makeSelectClient({ data: rows, error: null });
+    const reader = new SupabaseReader(client);
+
+    const result = await reader.getDailyCostSeries(7);
+
+    expect(result.map(r => r.day)).toEqual(['2026-04-21', '2026-04-22', '2026-04-23']);
+  });
+
+  it('throws StorageError when Supabase returns an error', async () => {
+    const client = makeSelectClient({ data: null, error: { message: 'query failed', code: '500' } });
+    const reader = new SupabaseReader(client);
+
+    await expect(reader.getDailyCostSeries(7)).rejects.toBeInstanceOf(StorageError);
+  });
+});

@@ -3,6 +3,7 @@ import { StorageError } from '../utils/error-handler';
 import { createModuleLogger } from '../utils/logger';
 import type { UsageBucket, ParsedCostRecord, IngestionType } from '../ingestion/types';
 import type { GrowthScenario, ModelEfficiency } from '../forecasting/types';
+import type { AnomalyResult } from '../anomaly/types';
 
 const logger = createModuleLogger('storage:writer');
 
@@ -129,5 +130,24 @@ export class SupabaseWriter {
     }
 
     logger.info({ type, recordsWritten }, 'Ingestion log written');
+  }
+
+  async writeAlertLog(anomaly: AnomalyResult): Promise<void> {
+    const { error } = await this.client
+      .from('alert_log')
+      .insert({
+        anomaly_type: anomaly.type,
+        severity: anomaly.severity,
+        message: anomaly.message,
+        metadata: anomaly.metadata,
+        fired_at: anomaly.detectedAt,
+      });
+
+    if (error) {
+      logger.error({ message: error.message, code: error.code, type: anomaly.type }, 'Failed to write alert log');
+      throw new StorageError(`Failed to write alert log: ${error.message}`, { cause: error });
+    }
+
+    logger.info({ type: anomaly.type, severity: anomaly.severity }, 'Alert log written');
   }
 }

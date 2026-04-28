@@ -14,6 +14,13 @@ const envSchema = z.object({
   GROWTH_SCENARIO_LOW: z.coerce.number().positive().default(0.05),
   GROWTH_SCENARIO_MEDIUM: z.coerce.number().positive().default(0.15),
   GROWTH_SCENARIO_HIGH: z.coerce.number().positive().default(0.30),
+  // Anomaly detection thresholds — all optional with safe defaults
+  TOKEN_SPIKE_WINDOW_DAYS: z.coerce.number().positive().default(7),
+  TOKEN_SPIKE_MULTIPLIER: z.coerce.number().positive().default(3),
+  TOKEN_SPIKE_THRESHOLD: z.coerce.number().positive().default(1_000_000),
+  COST_SPIKE_MULTIPLIER: z.coerce.number().positive().default(3),
+  AGENT_LOOP_TOKEN_THRESHOLD: z.coerce.number().positive().default(500_000),
+  AGENT_LOOP_RATIO_THRESHOLD: z.coerce.number().positive().default(10),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -279,3 +279,73 @@ describe('SupabaseWriter.writeModelEfficiencySnapshot', () => {
     ).rejects.toBeInstanceOf(StorageError);
   });
 });
+
+// ─── writeAlertLog ────────────────────────────────────────────────────────────
+
+describe('SupabaseWriter.writeAlertLog', () => {
+  it('inserts an alert_log row without throwing on success', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+
+    await expect(writer.writeAlertLog({
+      type: 'token_spike',
+      severity: 'warning',
+      message: 'test spike',
+      metadata: { today: '2026-04-28' },
+      detectedAt: '2026-04-28T12:00:00Z',
+    })).resolves.toBeUndefined();
+
+    expect(client.from).toHaveBeenCalledWith('alert_log');
+  });
+
+  it('inserts the correct anomaly_type, severity, and message', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+
+    await writer.writeAlertLog({
+      type: 'cost_anomaly',
+      severity: 'critical',
+      message: 'Cost threshold exceeded',
+      metadata: { day: '2026-04-28' },
+      detectedAt: '2026-04-28T12:00:00Z',
+    });
+
+    const inserted = mockInsert.mock.calls[0][0] as Record<string, unknown>;
+    expect(inserted.anomaly_type).toBe('cost_anomaly');
+    expect(inserted.severity).toBe('critical');
+    expect(inserted.message).toBe('Cost threshold exceeded');
+  });
+
+  it('stores metadata as-is', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+    const metadata = { day: '2026-04-28', costUsd: 150 };
+
+    await writer.writeAlertLog({
+      type: 'cost_anomaly',
+      severity: 'critical',
+      message: 'test',
+      metadata,
+      detectedAt: '2026-04-28T12:00:00Z',
+    });
+
+    const inserted = mockInsert.mock.calls[0][0] as Record<string, unknown>;
+    expect(inserted.metadata).toEqual(metadata);
+  });
+
+  it('throws StorageError when Supabase returns an error', async () => {
+    const client = makeInsertClient({ error: { message: 'write failed', code: '500' } });
+    const writer = new SupabaseWriter(client);
+
+    await expect(writer.writeAlertLog({
+      type: 'agent_loop',
+      severity: 'critical',
+      message: 'loop detected',
+      metadata: {},
+      detectedAt: '2026-04-28T12:00:00Z',
+    })).rejects.toBeInstanceOf(StorageError);
+  });
+});

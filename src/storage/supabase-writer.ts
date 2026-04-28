@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { StorageError } from '../utils/error-handler';
 import { createModuleLogger } from '../utils/logger';
 import type { UsageBucket, ParsedCostRecord, IngestionType } from '../ingestion/types';
+import type { GrowthScenario, ModelEfficiency } from '../forecasting/types';
 
 const logger = createModuleLogger('storage:writer');
 
@@ -58,6 +59,58 @@ export class SupabaseWriter {
     }
 
     logger.info({ rows: rows.length }, 'Upserted cost records');
+    return rows.length;
+  }
+
+  async writeForecastResults(
+    runId: string,
+    generatedAt: string,
+    horizonDays: number,
+    scenarios: GrowthScenario[]
+  ): Promise<number> {
+    const rows = scenarios.flatMap(s =>
+      s.points.map(p => ({
+        run_id: runId,
+        generated_at: generatedAt,
+        horizon_days: horizonDays,
+        scenario: s.scenario,
+        forecast_date: p.date,
+        predicted_cost_usd: p.predictedCostUsd,
+      }))
+    );
+
+    if (rows.length === 0) return 0;
+
+    const { error } = await this.client.from('forecast_results').insert(rows);
+
+    if (error) {
+      logger.error({ message: error.message, code: error.code, runId }, 'Failed to write forecast results');
+      throw new StorageError(`Failed to write forecast results: ${error.message}`, { cause: error });
+    }
+
+    logger.info({ runId, rows: rows.length }, 'Forecast results written');
+    return rows.length;
+  }
+
+  async writeModelEfficiencySnapshot(snapshots: ModelEfficiency[]): Promise<number> {
+    if (snapshots.length === 0) return 0;
+
+    const rows = snapshots.map(s => ({
+      model: s.model,
+      cost_per_million_tokens: s.costPerMillionTokens,
+      total_cost_usd: s.totalCostUsd,
+      total_tokens: s.totalTokens,
+      analysis_days: s.analysisWindowDays,
+    }));
+
+    const { error } = await this.client.from('model_efficiency_snapshots').insert(rows);
+
+    if (error) {
+      logger.error({ message: error.message, code: error.code }, 'Failed to write model efficiency snapshot');
+      throw new StorageError(`Failed to write model efficiency snapshot: ${error.message}`, { cause: error });
+    }
+
+    logger.info({ rows: rows.length }, 'Model efficiency snapshot written');
     return rows.length;
   }
 

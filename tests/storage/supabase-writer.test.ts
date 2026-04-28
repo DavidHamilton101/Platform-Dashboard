@@ -169,3 +169,113 @@ describe('SupabaseWriter.writeIngestionLog', () => {
     await expect(writer.writeIngestionLog('usage', 0)).rejects.toBeInstanceOf(StorageError);
   });
 });
+
+// ─── writeForecastResults ─────────────────────────────────────────────────────
+
+describe('SupabaseWriter.writeForecastResults', () => {
+  it('returns 0 and skips the DB call when scenarios have no points', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+
+    const count = await writer.writeForecastResults('run-1', '2026-04-28T00:00:00Z', 90, []);
+    expect(count).toBe(0);
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it('inserts one row per scenario × forecast point', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+
+    const scenarios = [
+      { scenario: 'low' as const, annualGrowthRate: 0.05, points: [{ date: '2026-05-01', predictedCostUsd: 21 }, { date: '2026-05-02', predictedCostUsd: 21.1 }] },
+      { scenario: 'high' as const, annualGrowthRate: 0.30, points: [{ date: '2026-05-01', predictedCostUsd: 22 }, { date: '2026-05-02', predictedCostUsd: 22.5 }] },
+    ];
+    const count = await writer.writeForecastResults('run-1', '2026-04-28T00:00:00Z', 90, scenarios);
+
+    expect(count).toBe(4);
+    expect(client.from).toHaveBeenCalledWith('forecast_results');
+  });
+
+  it('includes run_id, scenario, and forecast_date in each inserted row', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+
+    await writer.writeForecastResults('run-abc', '2026-04-28T00:00:00Z', 30, [
+      { scenario: 'medium' as const, annualGrowthRate: 0.15, points: [{ date: '2026-05-01', predictedCostUsd: 25 }] },
+    ]);
+
+    const rows = mockInsert.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows[0].run_id).toBe('run-abc');
+    expect(rows[0].scenario).toBe('medium');
+    expect(rows[0].forecast_date).toBe('2026-05-01');
+  });
+
+  it('throws StorageError when Supabase returns an error', async () => {
+    const client = makeInsertClient({ error: { message: 'insert failed', code: '500' } });
+    const writer = new SupabaseWriter(client);
+
+    await expect(
+      writer.writeForecastResults('run-1', '2026-04-28T00:00:00Z', 90, [
+        { scenario: 'low' as const, annualGrowthRate: 0.05, points: [{ date: '2026-05-01', predictedCostUsd: 21 }] },
+      ])
+    ).rejects.toBeInstanceOf(StorageError);
+  });
+});
+
+// ─── writeModelEfficiencySnapshot ────────────────────────────────────────────
+
+describe('SupabaseWriter.writeModelEfficiencySnapshot', () => {
+  it('returns 0 and skips the DB call for an empty array', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+
+    expect(await writer.writeModelEfficiencySnapshot([])).toBe(0);
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it('inserts one row per model and returns the count', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+
+    const snapshots = [
+      { model: 'claude-a', totalCostUsd: 10, totalTokens: 1_000_000, costPerMillionTokens: 10, analysisWindowDays: 30 },
+      { model: 'claude-b', totalCostUsd: 5, totalTokens: 500_000, costPerMillionTokens: 10, analysisWindowDays: 30 },
+    ];
+    const count = await writer.writeModelEfficiencySnapshot(snapshots);
+
+    expect(count).toBe(2);
+    expect(client.from).toHaveBeenCalledWith('model_efficiency_snapshots');
+  });
+
+  it('maps fields correctly into the inserted rows', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null });
+    const client = { from: vi.fn().mockReturnValue({ insert: mockInsert }) } as unknown as SupabaseClient;
+    const writer = new SupabaseWriter(client);
+
+    await writer.writeModelEfficiencySnapshot([
+      { model: 'claude-x', totalCostUsd: 3.5, totalTokens: 700_000, costPerMillionTokens: 5.0, analysisWindowDays: 14 },
+    ]);
+
+    const row = (mockInsert.mock.calls[0][0] as Array<Record<string, unknown>>)[0];
+    expect(row.model).toBe('claude-x');
+    expect(row.cost_per_million_tokens).toBe(5.0);
+    expect(row.total_tokens).toBe(700_000);
+    expect(row.analysis_days).toBe(14);
+  });
+
+  it('throws StorageError when Supabase returns an error', async () => {
+    const client = makeInsertClient({ error: { message: 'insert failed', code: '500' } });
+    const writer = new SupabaseWriter(client);
+
+    await expect(
+      writer.writeModelEfficiencySnapshot([
+        { model: 'claude-a', totalCostUsd: 1, totalTokens: 100_000, costPerMillionTokens: 10, analysisWindowDays: 7 },
+      ])
+    ).rejects.toBeInstanceOf(StorageError);
+  });
+});

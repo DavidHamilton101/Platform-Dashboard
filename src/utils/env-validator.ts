@@ -8,6 +8,13 @@ const envSchema = z.object({
   ALERT_WEBHOOK_URL: z.string().url(),
   COST_ALERT_THRESHOLD_USD: z.coerce.number().positive(),
   ENVIRONMENT: z.enum(['development', 'staging', 'production']),
+  // Anomaly detection thresholds — all optional with safe defaults
+  TOKEN_SPIKE_WINDOW_DAYS: z.coerce.number().positive().default(7),
+  TOKEN_SPIKE_MULTIPLIER: z.coerce.number().positive().default(3),
+  TOKEN_SPIKE_THRESHOLD: z.coerce.number().positive().default(1_000_000),
+  COST_SPIKE_MULTIPLIER: z.coerce.number().positive().default(3),
+  AGENT_LOOP_TOKEN_THRESHOLD: z.coerce.number().positive().default(500_000),
+  AGENT_LOOP_RATIO_THRESHOLD: z.coerce.number().positive().default(10),
 });
 
 export type Env = z.infer<typeof envSchema>;

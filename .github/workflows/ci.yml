@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+jobs:
+  build-and-test:
+    name: Build, Test & Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for package.json
+        id: pkg_check
+        run: |
+          if [ -f package.json ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No package.json found — skipping build and test steps."
+          fi
+
+      - name: Set up Node.js
+        if: steps.pkg_check.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.pkg_check.outputs.exists == 'true'
+        run: npm ci
+
+      - name: Type check
+        if: steps.pkg_check.outputs.exists == 'true'
+        run: npx tsc --noEmit
+
+      - name: Run tests with coverage
+        if: steps.pkg_check.outputs.exists == 'true'
+        run: npm test -- --coverage
+
+      - name: Security audit
+        if: steps.pkg_check.outputs.exists == 'true'
+        run: npm audit --audit-level=high

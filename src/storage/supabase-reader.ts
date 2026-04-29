@@ -41,6 +41,34 @@ export interface DailyCostSeriesRow {
   total_amount_usd: number;
 }
 
+export interface AlertLogRow {
+  id: string;
+  anomaly_type: string;
+  severity: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  fired_at: string;
+  acknowledged_at: string | null;
+}
+
+export interface ForecastResultRow {
+  run_id: string;
+  generated_at: string;
+  horizon_days: number;
+  scenario: string;
+  forecast_date: string;
+  predicted_cost_usd: number;
+}
+
+export interface ModelEfficiencySnapshotRow {
+  model: string;
+  cost_per_million_tokens: number;
+  total_cost_usd: number;
+  total_tokens: number;
+  analysis_days: number;
+  snapshot_at: string;
+}
+
 export class SupabaseReader {
   constructor(private readonly client: SupabaseClient) {}
 
@@ -133,6 +161,79 @@ export class SupabaseReader {
     return Array.from(byDay.entries())
       .map(([day, total_amount_usd]) => ({ day, total_amount_usd }))
       .sort((a, b) => a.day.localeCompare(b.day));
+  }
+
+  async getAlertLog(limit: number): Promise<AlertLogRow[]> {
+    const { data, error } = await this.client
+      .from('alert_log')
+      .select('id, anomaly_type, severity, message, metadata, fired_at, acknowledged_at')
+      .order('fired_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      logger.error({ message: error.message, code: error.code }, 'Failed to query alert log');
+      throw new StorageError(`Failed to query alert log: ${error.message}`, { cause: error });
+    }
+
+    return (data ?? []) as AlertLogRow[];
+  }
+
+  async getLatestForecastRun(): Promise<ForecastResultRow[]> {
+    const { data: latest, error: latestError } = await this.client
+      .from('forecast_results')
+      .select('run_id')
+      .order('generated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestError) {
+      logger.error({ message: latestError.message, code: latestError.code }, 'Failed to query latest forecast run_id');
+      throw new StorageError(`Failed to query latest forecast: ${latestError.message}`, { cause: latestError });
+    }
+
+    if (!latest) return [];
+
+    const { data, error } = await this.client
+      .from('forecast_results')
+      .select('run_id, generated_at, horizon_days, scenario, forecast_date, predicted_cost_usd')
+      .eq('run_id', latest.run_id)
+      .order('scenario', { ascending: true })
+      .order('forecast_date', { ascending: true });
+
+    if (error) {
+      logger.error({ message: error.message, code: error.code }, 'Failed to query forecast results');
+      throw new StorageError(`Failed to query forecast results: ${error.message}`, { cause: error });
+    }
+
+    return (data ?? []) as ForecastResultRow[];
+  }
+
+  async getLatestModelEfficiency(): Promise<ModelEfficiencySnapshotRow[]> {
+    const { data: latest, error: latestError } = await this.client
+      .from('model_efficiency_snapshots')
+      .select('snapshot_at')
+      .order('snapshot_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestError) {
+      logger.error({ message: latestError.message, code: latestError.code }, 'Failed to query latest snapshot timestamp');
+      throw new StorageError(`Failed to query model efficiency: ${latestError.message}`, { cause: latestError });
+    }
+
+    if (!latest) return [];
+
+    const { data, error } = await this.client
+      .from('model_efficiency_snapshots')
+      .select('model, cost_per_million_tokens, total_cost_usd, total_tokens, analysis_days, snapshot_at')
+      .eq('snapshot_at', latest.snapshot_at);
+
+    if (error) {
+      logger.error({ message: error.message, code: error.code }, 'Failed to query model efficiency snapshots');
+      throw new StorageError(`Failed to query model efficiency snapshots: ${error.message}`, { cause: error });
+    }
+
+    return (data ?? []) as ModelEfficiencySnapshotRow[];
   }
 
   async getCostByWorkspace(days: number): Promise<CostByWorkspaceRow[]> {
